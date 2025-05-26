@@ -19,7 +19,7 @@
 #include "mem_helpers.h"
 #include "multi_buffer_stream.h"
 #include "sprites.h"
-#include "feature_flags.h"
+#include "vdp_variables.h"
 #include "types.h"
 #include "vdu_stream_processor.h"
 
@@ -193,15 +193,15 @@ void IRAM_ATTR VDUStreamProcessor::vdu_sys_buffered() {
 			}
 			bufferCopyAndConsolidate(bufferId, sourceBufferIds);
 		}	break;
-		case BUFFERED_AFFINE_TRANSFORM: if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+		case BUFFERED_AFFINE_TRANSFORM: if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 			auto operation = readByte_t(); if (operation == -1) return;
 			bufferAffineTransform(bufferId, operation, false);
 		}	break;
-		case BUFFERED_AFFINE_TRANSFORM_3D: if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+		case BUFFERED_AFFINE_TRANSFORM_3D: if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 			auto operation = readByte_t(); if (operation == -1) return;
 			bufferAffineTransform(bufferId, operation, true);
 		}	break;
-		case BUFFERED_MATRIX: if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+		case BUFFERED_MATRIX: if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 			auto operation = readByte_t(); if (operation == -1) return;
 			auto rows = readByte_t(); if (rows == -1) return;
 			auto columns = readByte_t(); if (columns == -1) return;
@@ -210,7 +210,7 @@ void IRAM_ATTR VDUStreamProcessor::vdu_sys_buffered() {
 			size.columns = columns;
 			bufferMatrixManipulate(bufferId, operation, size);
 		}	break;
-		case BUFFERED_TRANSFORM_BITMAP: if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+		case BUFFERED_TRANSFORM_BITMAP: if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 			auto options = readByte_t();
 			auto transformBufferId = readWord_t();
 			auto bitmapId = readWord_t();
@@ -219,7 +219,7 @@ void IRAM_ATTR VDUStreamProcessor::vdu_sys_buffered() {
 			}
 			bufferTransformBitmap(bufferId, options, transformBufferId, bitmapId);
 		}	break;
-		case BUFFERED_TRANSFORM_DATA: if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+		case BUFFERED_TRANSFORM_DATA: if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 			// VDU 23, 0, &A0, bufferId; &29, options, format, transformBufferId; sourceBufferId; : Apply transform matrix to data in a buffer
 			auto options = readByte_t();
 			auto format = readByte_t();
@@ -230,9 +230,9 @@ void IRAM_ATTR VDUStreamProcessor::vdu_sys_buffered() {
 			}
 			bufferTransformData(bufferId, options, format, transformBufferId, sourceBufferId);
 		}	break;
-		case BUFFERED_READ_FLAG: {
-			// VDU 23, 0, &A0, bufferId; &30, flags, offset; flagId; [default[;]]
-			bufferReadFlag(bufferId);
+		case BUFFERED_READ_VARIABLE: {
+			// VDU 23, 0, &A0, bufferId; &30, flags, offset; variableId; [default[;]]
+			bufferReadVariable(bufferId);
 		}	break;
 		case BUFFERED_COMPRESS: {
 			auto sourceBufferId = readWord_t();
@@ -361,13 +361,20 @@ void VDUStreamProcessor::bufferCall(uint16_t callBufferId, AdvancedOffset offset
 		auto multiBufferStream = (MultiBufferStream *)callInputStream.get();
 		multiBufferStream->seekTo(offset.blockOffset, offset.blockIndex);
 	}
-	// use the current VDUStreamProcessor, swapping out the stream
+	// Track our output streams so we can restore them after the call
+	auto currentOutputStream = outputStream;
+	auto currentOriginalOutputStream = originalOutputStream;
+	// update originalOutputStream so it is correct for the context of the call
+	originalOutputStream = outputStream;
+	// using the current VDUStreamProcessor, swap in our new input stream
 	std::swap(id, callBufferId);
 	std::swap(inputStream, callInputStream);
 	processAllAvailable();
-	// restore the original buffer id and stream
+	// restore the original buffer id and streams
 	id = callBufferId;
 	inputStream = std::move(callInputStream);
+	outputStream = std::move(currentOutputStream);
+	originalOutputStream = std::move(currentOriginalOutputStream);
 	if (id != 65535) {
 		// return to the appropriate offset
 		auto multiBufferStream = (MultiBufferStream *)inputStream.get();
@@ -1054,17 +1061,17 @@ bool VDUStreamProcessor::bufferConditional() {
 
 	bool useAdvancedOffsets = command & COND_ADVANCED_OFFSETS;
 	bool useBufferValue = command & COND_BUFFER_VALUE;	// Operand is a buffer value
-	bool useFlagValue = command & COND_FLAG_VALUE;	// source to check is a feature flag
+	bool useVariableValue = command & COND_VAR_VALUE;	// source to check is a feature flag
 	bool use16BitValue = command & COND_16BIT;	// source and operand are 16-bit values
 
-	auto checkBufferId = useFlagValue ? readWord_t() : resolveBufferId(readWord_t(), id);
+	auto checkBufferId = useVariableValue ? readWord_t() : resolveBufferId(readWord_t(), id);
 	
 	uint8_t op = command & COND_OP_MASK;
 	// conditional operators that are greater than NOT_EXISTS require an operand
 	bool hasOperand = op > COND_NOT_EXISTS;
 
 	AdvancedOffset offset = {};
-	if (!useFlagValue) {
+	if (!useVariableValue) {
 		offset = getOffsetFromStream(useAdvancedOffsets);
 	}
 
@@ -1081,9 +1088,9 @@ bool VDUStreamProcessor::bufferConditional() {
 	}
 
 	int32_t sourceValue = -1;
-	if (useFlagValue) {
-		if (isFeatureFlagSet(checkBufferId)) {
-			sourceValue = getFeatureFlag(checkBufferId);
+	if (useVariableValue) {
+		if (isVDPVariableSet(checkBufferId)) {
+			sourceValue = getVDPVariable(checkBufferId);
 			if (!use16BitValue) {
 				sourceValue &= 0xFF;
 			}
@@ -1104,7 +1111,7 @@ bool VDUStreamProcessor::bufferConditional() {
 	debug_log("bufferConditional: command %d, checkBufferId %d, offset %d:%d, operandBufferId %d, operandOffset %d:%d, sourceValue %d, operandValue %d\n\r",
 		command, checkBufferId, (int)offset.blockIndex, offset.blockOffset, operandBufferId, (int)operandOffset.blockIndex, operandOffset.blockOffset, sourceValue, operandValue);
 
-	if (useFlagValue && op <= COND_NOT_EXISTS) {	// Flag existence is a pure check, not check for zero
+	if (useVariableValue && op <= COND_NOT_EXISTS) {	// Flag existence is a pure check, not check for zero
 		if (op == COND_NOT_EXISTS) {
 			return sourceValue == -1;
 		}
@@ -2356,24 +2363,25 @@ void VDUStreamProcessor::bufferTransformData(uint16_t bufferId, uint8_t options,
 	debug_log("bufferTransformData: copied %d streams into buffer %d (%d)\n\r", streams.size(), bufferId, buffers[bufferId].size());
 }
 
-// VDU 23, 0, &A0, bufferId; &30, options, offset; flagId; [default[;]]
-// Copy a flag value into a buffer at a given offset
+// VDU 23, 0, &A0, bufferId; &30, options, offset; variableId; [default[;]]
+// Copy a VDP Variable value into a buffer at a given offset
 //
-void VDUStreamProcessor::bufferReadFlag(uint16_t bufferId) {
+void VDUStreamProcessor::bufferReadVariable(uint16_t bufferId) {
 	auto options = readByte_t();
 	if (options == -1) {
 		return;
 	}
-	bool useAdvancedOffsets = options & READ_FLAG_ADVANCED_OFFSETS;
-	bool useDefault = options & READ_FLAG_USE_DEFAULT;
-	bool use16Bit = options & READ_FLAG_16BIT;
+	bool useBigEndian = options & READ_VAR_BIG_ENDIAN;
+	bool useAdvancedOffsets = options & READ_VAR_ADVANCED_OFFSETS;
+	bool useDefault = options & READ_VAR_USE_DEFAULT;
+	bool use16Bit = options & READ_VAR_16BIT;
 
 	auto offset = getOffsetFromStream(useAdvancedOffsets);
 	if (offset.blockOffset == -1) {
 		return;
 	}
-	auto flagId = readWord_t();
-	if (flagId == -1) {
+	auto variableId = readWord_t();
+	if (variableId == -1) {
 		return;
 	}
 
@@ -2388,13 +2396,16 @@ void VDUStreamProcessor::bufferReadFlag(uint16_t bufferId) {
 	// Does our target exist?
 	auto target = getBufferSpan(bufferId, offset, use16Bit ? 2 : 1);
 	if (target.empty()) {
-		debug_log("bufferReadFlag: buffer %d not found or offset %d out of range\n\r", bufferId, offset.blockOffset);
+		debug_log("bufferReadVariable: buffer %d not found or offset %d out of range\n\r", bufferId, offset.blockOffset);
 		return;
 	}
 
-	if (isFeatureFlagSet(flagId)) {
+	if (isVDPVariableSet(variableId)) {
 		// flag exists, so write it to the buffer
-		auto value = getFeatureFlag(flagId);
+		auto value = getVDPVariable(variableId);
+		if (useBigEndian) {
+			value = value << 8 | (value >> 8);
+		}
 		target.front() = value & 0xFF;
 		if (use16Bit) {
 			target[1] = value >> 8;
@@ -2406,7 +2417,7 @@ void VDUStreamProcessor::bufferReadFlag(uint16_t bufferId) {
 			target[1] = defaultValue >> 8;
 		}
 	} else {
-		debug_log("bufferReadFlag: flag %d not found and no default value\n\r", flagId);
+		debug_log("bufferReadVariable: flag %d not found and no default value\n\r", variableId);
 	}
 }
 

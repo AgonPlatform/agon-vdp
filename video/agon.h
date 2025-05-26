@@ -81,8 +81,8 @@
 #define VDP_CONTEXT				0xC8	// Context management commands
 #define VDP_FLUSH_DRAWING_QUEUE	0xCA	// Flush the drawing queue
 #define VDP_PATTERN_LENGTH		0xF2	// Set pattern length (*FX 163,242,n)
-#define VDP_FEATUREFLAG_SET		0xF8	// Set a test flag
-#define VDP_FEATUREFLAG_CLEAR	0xF9	// Clear a test flag
+#define VDP_VDPVAR_SET			0xF8	// Set a test flag
+#define VDP_VDPVAR_CLEAR		0xF9	// Clear a test flag
 #define VDP_CONSOLEMODE			0xFE	// Switch console mode on and off
 #define VDP_TERMINALMODE		0xFF	// Switch to terminal mode
 
@@ -275,7 +275,7 @@
 #define BUFFERED_MATRIX					0x22	// Create or combine a matrix buffer of arbitrary dimensions
 #define BUFFERED_TRANSFORM_BITMAP		0x28	// Create a new bitmap from an existing one by applying a 2d transform
 #define BUFFERED_TRANSFORM_DATA			0x29	// Transform data using a given matrix
-#define BUFFERED_READ_FLAG				0x30	// Read flag value into a buffer
+#define BUFFERED_READ_VARIABLE			0x30	// Read a VDP variable value into a buffer
 #define BUFFERED_COMPRESS				0x40	// Compress blocks from multiple buffers into one buffer
 #define BUFFERED_DECOMPRESS				0x41	// Decompress blocks from multiple buffers into one buffer
 #define BUFFERED_EXPAND_BITMAP			0x48	// Expand a bitmap buffer
@@ -319,7 +319,7 @@
 #define COND_OP_MASK			0x0F	// conditional operation code mask
 #define COND_ADVANCED_OFFSETS	0x10	// advanced offset values
 #define COND_BUFFER_VALUE		0x20	// value to compare against is a buffer-fetched value
-#define COND_FLAG_VALUE			0x40	// condition source value is a flag
+#define COND_VAR_VALUE			0x40	// condition source value is a flag
 #define COND_16BIT				0x80	// values to compare are a 16-bit
 
 // Reverse operation flags
@@ -401,13 +401,14 @@
 #define TRANSFORM_DATA_PER_BLOCK	0x40	// Transform data per block
 
 // Read flag flags
-#define READ_FLAG_ADVANCED_OFFSETS	0x10	// advanced, 24-bit offsets (16-bit block offset follows if top bit set)
-#define READ_FLAG_USE_DEFAULT		0x40	// use default value if flag not set
-#define READ_FLAG_16BIT				0x80	// value to set is 16-bit
+#define READ_VAR_BIG_ENDIAN			0x01	// read variable value as big-endian (default is little-endian)
+#define READ_VAR_ADVANCED_OFFSETS	0x10	// advanced, 24-bit offsets (16-bit block offset follows if top bit set)
+#define READ_VAR_USE_DEFAULT		0x40	// use default value if flag not set
+#define READ_VAR_16BIT				0x80	// value to set is 16-bit
 
 // Buffered bitmap and sample info
-#define BUFFERED_BITMAP_BASEID	0xFA00	// Base ID for buffered bitmaps
-#define BUFFERED_SAMPLE_BASEID	0xFB00	// Base ID for buffered samples
+#define BUFFERED_BITMAP_BASEID		0xFA00	// Base ID for buffered bitmaps
+#define BUFFERED_SAMPLE_BASEID		0xFB00	// Base ID for buffered samples
 
 // Copper commands
 #define COPPER_CREATE_PALETTE		0		// Create a palette
@@ -419,67 +420,108 @@
 // Callback/event types
 #define CALLBACK_VSYNC				0		// VSync
 #define CALLBACK_MODE_CHANGE		1		// Mode changed
-// #define CALLBACK_KEYBOARD			2		// Keyboard event
-#define CALLBACK_MOUSE				3		// Mouse update
-// #define CALLBACK_PALETTE			4		// Palette entry changed
+#define CALLBACK_KEYBOARD			2		// Keyboard hardware event
+#define CALLBACK_MOUSE				3		// Mouse hardware update
+#define CALLBACK_PALETTE			4		// Palette entry changed
+#define CALLBACK_READPIXEL			5		// Read pixel event
+#define CALLBACK_SENDING_VDPP		0x0100	// Sending VDP protocol packet (OR with PACKET_* packet type value)
+#define CALLBACK_SENT_VDPP			0x0180	// Sent VDP protocol packet (OR with PACKET_* packet type value)
 // Future callback types may include...
 // * timer events (which may require metadata for timer duration, etc),
 // * audio events (a singular audio status event probably won't be enough)
 // * cursor events (movement, blink?, etc.  may need metadata to control debouncing on movement, and when events are sent)
 // * paged mode events (output paused, about to resume, setting changed)
 
-// Test/Feature flags
+// Test flags and variables
 #define TESTFLAG_AFFINE_TRANSFORM	1	// Affine transform test flag
 #define TESTFLAG_HW_SPRITES			2	// Hardware sprites test flag
 
-#define FEATUREFLAG_FULL_DUPLEX	0x0101	// Full duplex UART comms flag
-#define FEATUREFLAG_MOS_VDPP_BUFFERSIZE	0x0102	// Buffer size on MOS for VDP protocol packets
-#define FEATUREFLAG_ECHO		0x0110	// Echo back received data, for redirect/spool
-// #define FEATUREFLAG_ECHO_SETTINGS	0x0111	// Settings for what will be echo'd
-#define FEATUREFLAG_SYSTEM_BEGIN	0x0200	// General system settings start at 0x0200
-#define FEATUREFLAG_SYSTEM_END	0x02FF	// General system settings end
-#define FEATUREFLAG_RTC_YEAR	0x0200	// RTC year is 4 digits
-#define FEATUREFLAG_RTC_MONTH	0x0201	// RTC month is 1-12
-#define FEATUREFLAG_RTC_DAY		0x0202	// RTC day is 1-31
-#define FEATUREFLAG_RTC_HOUR	0x0203	// RTC hour is 0-23
-#define FEATUREFLAG_RTC_MINUTE	0x0204	// RTC minute is 0-59
-#define FEATUREFLAG_RTC_SECOND	0x0205	// RTC second is 0-59
-#define FEATUREFLAG_RTC_MILLIS	0x0206	// RTC millisecond is 0-999
-#define FEATUREFLAG_RTC_WEEKDAY	0x0207	// RTC weekday is 0-6
-#define FEATUREFLAG_RTC_YEARDAY	0x0208	// RTC day of year is 0-366
-#define FEATUREFLAG_FREEPSRAM_LOW	0x0210	// Free PSRAM low bytes
-#define FEATUREFLAG_FREEPSRAM_HIGH	0x0211	// Free PSRAM high bytes
-#define FEATUREFLAG_BUFFERS_USED	0x0212	// Number of buffers used
-#define FEATUREFLAG_KEYBOARD_LAYOUT	0x0220	// Keyboard layout
-#define FEATUREFLAG_KEYBOARD_CTRL_KEYS	0x0221	// Control keys on/off
-#define FEATUREFLAG_CONTEXT_ID	0x0230	// Current active context ID
-#define FEATUREFLAG_MOUSE_CURSOR	0x0240	// Mouse cursor ID
-#define FEATUREFLAG_MOUSE_ENABLED	0x0241	// Mouse enabled/disabled
-#define FEATUREFLAG_MOUSE_XPOS	0x0242	// Mouse X position (pixel coords)
-#define FEATUREFLAG_MOUSE_YPOS	0x0243	// Mouse Y position (pixel coords)
-#define FEATUREFLAG_MOUSE_BUTTONS	0x0244	// Mouse button state (bitmask)
-#define FEATUREFLAG_MOUSE_WHEEL	0x0245	// Mouse wheel
-#define FEATUREFLAG_MOUSE_SAMPLERATE	0x0246	// Mouse sample rate
-#define FEATUREFLAG_MOUSE_RESOLUTION	0x0247	// Mouse resolution
-#define FEATUREFLAG_MOUSE_SCALING	0x0248	// Mouse scaling
-#define FEATUREFLAG_MOUSE_ACCELERATION	0x0249	// Mouse acceleration
-#define FEATUREFLAG_MOUSE_WHEELACC	0x024A	// Mouse wheel acceleration
-#define FEATUREFLAG_MOUSE_VISIBLE	0x024B	// Mouse cursor visible (1) or hidden (0)
+#define VDPVAR_FULL_DUPLEX			0x0101	// Full duplex UART comms flag
+#define TESTFLAG_VDPP_BUFFERSIZE	0x0102	// Buffer size on MOS for VDP protocol packets
+#define TESTFLAG_ECHO				0x0110	// Echo back received data, for redirect/spool
+// #define TESTFLAG_ECHO_SETTINGS	0x0111	// Settings for what will be echo'd
+#define VDPVAR_SYSTEM_BEGIN			0x0200	// General system settings start at 0x0200
+#define VDPVAR_SYSTEM_END			0x02FF	// General system settings end
+#define VDPVAR_RTC_YEAR				0x0200	// RTC year is 4 digits
+#define VDPVAR_RTC_MONTH			0x0201	// RTC month is 1-12
+#define VDPVAR_RTC_DAY				0x0202	// RTC day is 1-31
+#define VDPVAR_RTC_HOUR				0x0203	// RTC hour is 0-23
+#define VDPVAR_RTC_MINUTE			0x0204	// RTC minute is 0-59
+#define VDPVAR_RTC_SECOND			0x0205	// RTC second is 0-59
+#define VDPVAR_RTC_MILLIS			0x0206	// RTC millisecond is 0-999
+#define VDPVAR_RTC_WEEKDAY			0x0207	// RTC weekday is 0-6
+#define VDPVAR_RTC_YEARDAY			0x0208	// RTC day of year is 0-366
+#define VDPVAR_FREEPSRAM_LOW		0x0210	// Free PSRAM low bytes
+#define VDPVAR_FREEPSRAM_HIGH		0x0211	// Free PSRAM high bytes
+#define VDPVAR_BUFFERS_USED			0x0212	// Number of buffers used
+#define VDPVAR_KEYBOARD_LAYOUT		0x0220	// Keyboard layout
+#define VDPVAR_KEYBOARD_CTRL_KEYS	0x0221	// Control keys on/off
+#define VDPVAR_KEYBOARD_REP_DELAY	0x0222	// Keyboard repeat delay (milliseconds)
+#define VDPVAR_KEYBOARD_REP_RATE	0x0223	// Keyboard repeat rate (characters per second)
+#define VDPVAR_KEYBOARD_LED			0x0224	// Keyboard LED status (bitmask, combined)
+#define VDPVAR_KEYBOARD_LED_NUM		0x0225	// Keyboard Num Lock LED status (1=on, 0=off)
+#define VDPVAR_KEYBOARD_LED_CAPS	0x0226	// Keyboard Caps Lock LED status (1=on, 0=off)
+#define VDPVAR_KEYBOARD_LED_SCROLL	0x0227	// Keyboard Scroll Lock LED status (1=on, 0=off)
+#define VDPVAR_CONTEXT_ID			0x0230	// Current active context ID
+#define VDPVAR_MOUSE_CURSOR			0x0240	// Mouse cursor ID
+#define VDPVAR_MOUSE_ENABLED		0x0241	// Mouse enabled/disabled
+#define VDPVAR_MOUSE_XPOS			0x0242	// Mouse X position (pixel coords)
+#define VDPVAR_MOUSE_YPOS			0x0243	// Mouse Y position (pixel coords)
+#define VDPVAR_MOUSE_BUTTONS		0x0244	// Mouse button state (bitmask)
+#define VDPVAR_MOUSE_WHEEL			0x0245	// Mouse wheel
+#define VDPVAR_MOUSE_SAMPLERATE		0x0246	// Mouse sample rate
+#define VDPVAR_MOUSE_RESOLUTION		0x0247	// Mouse resolution
+#define VDPVAR_MOUSE_SCALING		0x0248	// Mouse scaling
+#define VDPVAR_MOUSE_ACCELERATION	0x0249	// Mouse acceleration
+#define VDPVAR_MOUSE_WHEELACC		0x024A	// Mouse wheel acceleration
+#define VDPVAR_MOUSE_VISIBLE		0x024B	// Mouse cursor visible (1) or hidden (0)
 // Flags 0x024C-0x024F reserved for mouse area
-#define FEATUREFLAG_TILE_ENGINE	0x0300	// Tile engine flag (layers commands)
-#define FEATUREFLAG_COPPER		0x0310	// Copper feature flag
-#define FEATUREFLAG_AUTO_HW_SPRITES	0x0400	// Auto hardware sprites flag
-#define FEATUREFLAG_VDU_VARIABLES_START	0x1000	// VDU variables start at 0x1000
-#define FEATUREFLAG_VDU_VARIABLES_END	0x1FFF	// VDU variables end
-#define FEATUREFLAG_VDU_VARIABLES_MASK	0x0FFF	// VDU variables mask
+#define VDPVAR_MOUSE_XPOS_OS		0x0250	// Mouse X position (OS coords)
+#define VDPVAR_MOUSE_YPOS_OS		0x0251	// Mouse Y position (OS coords)
+#define VDPVAR_MOUSE_DELTAX			0x0252	// Mouse delta X (pixel coords)
+#define VDPVAR_MOUSE_DELTAY			0x0253	// Mouse delta Y (pixel coords)
+#define VDPVAR_MOUSE_DELTAX_OS		0x0254	// Mouse delta X (OS coords)
+#define VDPVAR_MOUSE_DELTAY_OS		0x0255	// Mouse delta Y (OS coords)
+#define VDPVAR_KEYEVENT_KEYCODE		0x0260	// Keycode (includes modifications) (upper byte raw ASCII from VirtualKeyItem)
+#define VDPVAR_KEYEVENT_VK			0x0261	// FabGL Virtual keycode
+#define VDPVAR_KEYEVENT_DOWN		0x0262	// Key down flag (1) or up (0)
+#define VDPVAR_KEYEVENT_MODIFIERS	0x0263	// Key modifiers byte (Shift, Ctrl, Alt, etc)
+#define VDPVAR_KEYEVENT_CTRL		0x0264	// CTRL key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_SHIFT		0x0265	// SHIFT key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_LALT		0x0266	// LEFT ALT key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_RALT		0x0267	// RIGHT ALT key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_CAPSLOCK	0x0268	// CAPSLOCK key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_NUMLOCK		0x0269	// NUMLOCK key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_SCROLLLOCK	0x026A	// SCROLLLOCK key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_GUI			0x026B	// GUI key state (1=pressed, 0=not pressed)
+#define VDPVAR_KEYEVENT_SCANCODE1	0x026C	// Key scancode bytes 1 and 2
+#define VDPVAR_KEYEVENT_SCANCODE2	0x026D	// Key scancode bytes 3 and 4
+#define VDPVAR_KEYEVENT_SCANCODE3	0x026E	// Key scancode bytes 5 and 6
+#define VDPVAR_KEYEVENT_SCANCODE4	0x026F	// Key scancode bytes 7 and 8
+#define TESTFLAG_TILE_ENGINE		0x0300	// Tile engine flag (layers commands)
+#define VDPVAR_COPPER				0x0310	// Copper feature flag
+#define VDPVAR_AUTO_HW_SPRITES		0x0400	// Auto hardware sprites flag
+#define VDPVAR_LAST_CHARACTER_READ	0x0500	// Last character read from screen
+#define VDPVAR_LAST_COLOUR_RED		0x0510	// Last colour read (red component)
+#define VDPVAR_LAST_COLOUR_GREEN	0x0511	// Last colour read (green component)
+#define VDPVAR_LAST_COLOUR_BLUE		0x0512	// Last colour read (blue component)
+#define VDPVAR_LAST_COLOUR_LOGICAL	0x0513	// Last colour read (logical colour / palette index)
+#define VDPVAR_LAST_COLOUR_PHYSICAL	0x0514	// Last colour read (physical colour / RGB222 value)
+#define VDPVAR_LAST_COLOUR_X		0x0515	// Last colour read (X coordinate)
+#define VDPVAR_LAST_COLOUR_Y		0x0516	// Last colour read (Y coordinate)
+#define VDPVAR_KEYMAP_START			0x0800	// Keymap start (block of 256)
+#define VDPVAR_VDU_VARIABLES_START	0x1000	// VDU variables start at 0x1000
+#define VDPVAR_VDU_VARIABLES_END	0x1FFF	// VDU variables end
+#define VDPVAR_VDU_VARIABLES_MASK	0x0FFF	// VDU variables mask
 
-#define VDU_VAR_PALETTE			0x200	// Palette variables start (block of 64)
-#define VDU_VAR_PALETTE_END		0x23F	// Palette variables end
-#define VDU_VAR_CHARMAPPING		0x300	// Character to bitmap mapping start (block of 256)
-#define VDU_VAR_CHARMAPPING_END	0x3FF	// Character to bitmap mapping end
+// VDU variables (add 0x1000 to these for the actual VDP variable numbers)
+#define VDU_VAR_PALETTE				0x0200	// Palette variables start (block of 64)
+#define VDU_VAR_PALETTE_END			0x023F	// Palette variables end
+#define VDU_VAR_CHARMAPPING			0x0300	// Character to bitmap mapping start (block of 256)
+#define VDU_VAR_CHARMAPPING_END		0x03FF	// Character to bitmap mapping end
 
-#define LOGICAL_SCRW			1280	// As per the BBC Micro standard
-#define LOGICAL_SCRH			1024
+#define LOGICAL_SCRW				1280	// As per the BBC Micro standard
+#define LOGICAL_SCRH				1024
 
 // Function Prototypes
 //

@@ -23,7 +23,7 @@ Sprite			sprites[MAX_SPRITES];			// Sprite object storage
 // track which sprites may be using a bitmap
 std::unordered_map<uint16_t, std::vector<uint8_t, psram_allocator<uint8_t>>> bitmapUsers;
 
-extern bool isFeatureFlagSet(uint16_t flag);
+extern bool isVDPVariableSet(uint16_t flag);
 
 std::shared_ptr<Bitmap> getBitmap(uint16_t id) {
 	if (bitmaps.find(id) != bitmaps.end()) {
@@ -234,7 +234,7 @@ void hideAllSprites() {
 void resetSprites() {
 	waitPlotCompletion();
 	hideAllSprites();
-	bool autoHardwareSprites = isFeatureFlagSet(TESTFLAG_HW_SPRITES) && isFeatureFlagSet(FEATUREFLAG_AUTO_HW_SPRITES);
+	bool autoHardwareSprites = isVDPVariableSet(TESTFLAG_HW_SPRITES) && isVDPVariableSet(VDPVAR_AUTO_HW_SPRITES);
 	for (auto n = 0; n < MAX_SPRITES; n++) {
 		auto sprite = getSprite(n);
 		sprite->hardware = autoHardwareSprites ? 1 : 0;

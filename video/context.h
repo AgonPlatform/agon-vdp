@@ -13,11 +13,13 @@
 #include "agon.h"
 #include "sprites.h"
 
-extern bool isFeatureFlagSet(uint16_t flag);
-extern uint16_t getFeatureFlag(uint16_t flag);
-extern void setFeatureFlag(uint16_t flag, uint16_t value);
-extern void performMouseCallback();
+extern bool isVDPVariableSet(uint16_t flag);
+extern uint16_t getVDPVariable(uint16_t flag);
+extern void setVDPVariable(uint16_t flag, uint16_t value);
 uint		lastFrameCounter = 0;			// Last frame counter for VSYNC callbacks
+
+// Type declarations for ContextVector and ContextVectorPtr are after the Context class
+// contextStacks global variable also defined after the Context class
 
 // Support structures
 
@@ -160,6 +162,7 @@ class Context {
 		fabgl::PaintOptions getPaintOptions(fabgl::PaintMode mode, fabgl::PaintOptions priorPaintOptions);
 		void setGraphicsOptions(uint8_t mode);
 		void setGraphicsFill(uint8_t mode);
+		void updateColours(uint8_t logical, uint8_t physical);
 		inline void setClippingRect(Rect rect);
 
 		void pushPoint(Point p);
@@ -283,9 +286,9 @@ class Context {
 
 		void setTextColour(uint8_t colour);
 		void setGraphicsColour(uint8_t mode, uint8_t colour);
-		void updateColours(uint8_t l, uint8_t p);
 		bool getColour(uint8_t colour, RGB888 * pixel);
 		RGB888 getPixel(uint16_t x, uint16_t y);
+		static void updateColoursInAllContexts(uint8_t logical, uint8_t physical);
 
 		void pushPoint(uint16_t x, uint16_t y);
 		Rect getGraphicsRect();							// Used by sprites system to capture screen area
@@ -313,8 +316,14 @@ class Context {
 		void activate();
 };
 
+using ContextVector = std::vector<std::shared_ptr<Context>, psram_allocator<std::shared_ptr<Context>>>;
+using ContextVectorPtr = std::shared_ptr<ContextVector>;
+std::unordered_map<uint16_t, ContextVectorPtr,
+	std::hash<uint16_t>, std::equal_to<uint16_t>,
+	psram_allocator<std::pair<const uint16_t, ContextVectorPtr>>> contextStacks;
 
- Context::Context(const Context &c) {
+
+Context::Context(const Context &c) {
 	// Copy almost all the data
 	// VDU command processor state is explicitly not copied, so will get defaults
 
@@ -395,6 +404,19 @@ class Context {
 	}
 }
 
+void Context::updateColoursInAllContexts(uint8_t logical, uint8_t physical) {
+	for (auto& stackPair : contextStacks) {
+		auto contextStack = stackPair.second;
+		if (contextStack) {
+			for (auto& context : *contextStack) {
+				if (context) {
+					context->updateColours(logical, physical);
+				}
+			}
+		}
+	}
+}
+
 bool Context::readVariable(uint16_t var, uint16_t * value) {
 	if (var >= VDU_VAR_PALETTE && var <= VDU_VAR_PALETTE_END) {
 		if (value) {
@@ -444,7 +466,7 @@ bool Context::readVariable(uint16_t var, uint16_t * value) {
 			break;
 		case 13:	// Number of screen banks
 			if (value) {
-				*value =  isDoubleBuffered() ? 2 : 1;
+				*value = isDoubleBuffered() ? 2 : 1;
 			}
 			break;
 
@@ -861,10 +883,10 @@ bool Context::readVariable(uint16_t var, uint16_t * value) {
 		case 0x448:	// Mouse scaling
 		case 0x449:	// Mouse acceleration
 		case 0x44A: {	// Mouse wheel acceleration
-			auto flagId = (var - 0x440) + FEATUREFLAG_MOUSE_CURSOR;
-			auto flagExists = isFeatureFlagSet(flagId);
+			auto flagId = (var - 0x440) + VDPVAR_MOUSE_CURSOR;
+			auto flagExists = isVDPVariableSet(flagId);
 			if (flagExists) {
-				*value = getFeatureFlag(flagId);
+				*value = getVDPVariable(flagId);
 			} else {
 				// This shouldn't happen, but just in case
 				return false;
@@ -884,7 +906,13 @@ void Context::setVariable(uint16_t var, uint16_t value) {
 		if (value >= 64) {
 			return;
 		}
-		setLogicalPalette(var - VDU_VAR_PALETTE, value, 0, 0, 0);
+		// NB Setting a palette entry via the VDU variable explicitly does not
+		// trigger a palette update event or update the "last colour" VDP variables
+		auto logical = (var - VDU_VAR_PALETTE) & (getVGAColourDepth() - 1);
+		auto physical = setLogicalPalette(logical, value, 0, 0, 0);
+		if (physical != -1) {
+			Context::updateColoursInAllContexts(logical, physical);
+		}
 		return;
 	}
 	if (var >= VDU_VAR_CHARMAPPING && var <= VDU_VAR_CHARMAPPING_END) {
@@ -1150,7 +1178,7 @@ void Context::setVariable(uint16_t var, uint16_t value) {
 			setCurrentBitmap(value);
 			break;
 		case 0x402:	// Current bitmap transform ID
-			if (isFeatureFlagSet(TESTFLAG_AFFINE_TRANSFORM)) {
+			if (isVDPVariableSet(TESTFLAG_AFFINE_TRANSFORM)) {
 				bitmapTransform = value;
 			}
 			break;
@@ -1170,7 +1198,7 @@ void Context::setVariable(uint16_t var, uint16_t value) {
 		case 0x448:	// Mouse scaling
 		case 0x449:	// Mouse acceleration
 		case 0x44A:	// Mouse wheel acceleration
-			setFeatureFlag((var - 0x440) + FEATUREFLAG_MOUSE_CURSOR, value);
+			setVDPVariable((var - 0x440) + VDPVAR_MOUSE_CURSOR, value);
 			break;
 		// Candidate variables for mouse area (0x44C-0x44F) won't be passed through
 	}

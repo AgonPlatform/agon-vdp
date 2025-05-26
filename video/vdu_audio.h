@@ -233,6 +233,7 @@ void VDUStreamProcessor::vdu_sys_audio() {
 // Send an audio acknowledgement
 //
 void VDUStreamProcessor::sendAudioStatus(uint8_t channel, uint8_t status) {
+	bufferCallCallbacks(CALLBACK_SENDING_VDPP | PACKET_AUDIO);
 	uint8_t packet[] = {
 		channel,
 		status,

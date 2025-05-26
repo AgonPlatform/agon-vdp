@@ -77,6 +77,25 @@ void Context::setGraphicsFill(uint8_t mode) {
 	}
 }
 
+// Update selected colours based on palette change in 64 colour modes
+//
+void Context::updateColours(uint8_t logical, uint8_t physical) {
+	plottingText = false;
+	auto lookedup = colourLookup[physical];
+	if (logical == tfgc) {
+		tfg = lookedup;
+	}
+	if (logical == tbgc) {
+		tbg = lookedup;
+	}
+	if (logical == gfgc) {
+		gfg = lookedup;
+	}
+	if (logical == gbgc) {
+		gbg = lookedup;
+	}
+}
+
 // Set a clipping rectangle
 //
 inline void Context::setClippingRect(Rect rect) {
@@ -545,25 +564,6 @@ void Context::setGraphicsColour(uint8_t mode, uint8_t colour) {
 		debug_log("vdu_gcol: invalid mode %d\n\r", mode);
 	}
 	plottingText = false;
-}
-
-// Update selected colours based on palette change in 64 colour modes
-//
-void Context::updateColours(uint8_t l, uint8_t index) {
-	plottingText = false;
-	auto lookedup = colourLookup[index];
-	if (l == tfgc) {
-		tfg = lookedup;
-	}
-	if (l == tbgc) {
-		tbg = lookedup;
-	}
-	if (l == gfgc) {
-		gfg = lookedup;
-	}
-	if (l == gbgc) {
-		gbg = lookedup;
-	}
 }
 
 // Get currently set colour values

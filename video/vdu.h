@@ -128,12 +128,9 @@ void VDUStreamProcessor::vdu(uint8_t c, bool usePeek) {
 		case 0x13:	// Define Logical Colour
 			vdu_palette();
 			break;
-		case 0x14: { // Reset colours
-			restorePalette();
-			// TODO consider if this should iterate over all stored contexts
-			// and if not, how to handle the fact that the palette has changed
-			context->resetGraphicsPainting();
-		}	break;
+		case 0x14:	// Reset colours
+			vdu_restorePalette();
+			break;
 		case 0x15:
 			commandsEnabled = false;
 			break;
@@ -252,14 +249,45 @@ void VDUStreamProcessor::vdu_palette() {
 	auto g = readByte_t(); if (g == -1) return; // The green component
 	auto b = readByte_t(); if (b == -1) return; // The blue component
 
-	// keep logical colour index in bounds
-	l &= 63;
-	auto index = setLogicalPalette(l, p, r, g, b);
+	// keep logical colour index in bounds for current mode
+	l &= (getVGAColourDepth() - 1);
+	auto physical = setLogicalPalette(l, p, r, g, b);
 
-	if (index != -1) {
-		// TODO iterate over all stored contexts and update the palette
-		context->updateColours(l, index);
+	if (physical != -1) {
+		// Ensure all contexts get updated with the new colour
+		Context::updateColoursInAllContexts(l, physical);
+
+		auto pixel = colourLookup[physical];
+		setVDPVariable(VDPVAR_LAST_COLOUR_RED, pixel.R);
+		setVDPVariable(VDPVAR_LAST_COLOUR_GREEN, pixel.G);
+		setVDPVariable(VDPVAR_LAST_COLOUR_BLUE, pixel.B);
+		setVDPVariable(VDPVAR_LAST_COLOUR_LOGICAL, l);
+		setVDPVariable(VDPVAR_LAST_COLOUR_PHYSICAL, physical);
+		setVDPVariable(VDPVAR_LAST_COLOUR_X, 32768);
+		setVDPVariable(VDPVAR_LAST_COLOUR_Y, 32768);
+		bufferCallCallbacks(CALLBACK_PALETTE);
 	}
+}
+
+// VDU 20 Handle palette reset
+//
+void VDUStreamProcessor::vdu_restorePalette() {
+	restorePalette();
+	// Reset our current context graphics painting settings
+	context->resetGraphicsPainting();
+	// iterate over current possible colours, and call updateColoursInAllContexts
+	for (uint8_t i = getVGAColourDepth() - 1; i >= 0; i--) {
+		RGB222 physical = RGB222(colourLookup[i]);
+		Context::updateColoursInAllContexts(i, physical.R << 4 | physical.G << 2 | physical.B);
+	}
+	setVDPVariable(VDPVAR_LAST_COLOUR_RED, 0);
+	setVDPVariable(VDPVAR_LAST_COLOUR_GREEN, 0);
+	setVDPVariable(VDPVAR_LAST_COLOUR_BLUE, 0);
+	setVDPVariable(VDPVAR_LAST_COLOUR_LOGICAL, 255);
+	setVDPVariable(VDPVAR_LAST_COLOUR_PHYSICAL, 255);
+	setVDPVariable(VDPVAR_LAST_COLOUR_X, 32768);
+	setVDPVariable(VDPVAR_LAST_COLOUR_Y, 32768);
+	bufferCallCallbacks(CALLBACK_PALETTE);
 }
 
 // VDU 22 Handle MODE
@@ -292,12 +320,13 @@ void VDUStreamProcessor::vdu_mode(uint8_t mode) {
 		showMouseCursor();
 	}
 	resetMousePositioner(canvasW, canvasH, _VGAController.get());
-	// update MOS with new info
-	sendModeInformation();
 	if (mouseVisible) {
-		sendMouseData();
+		// update mouse variables from potentially revised mouse position
+		updateMouseVars(nullptr);
 	}
 	bufferCallCallbacks(CALLBACK_MODE_CHANGE);
+	// update MOS with new info
+	sendModeInformation();
 }
 
 // VDU 24 Graphics viewport

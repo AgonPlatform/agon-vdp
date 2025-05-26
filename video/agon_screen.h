@@ -128,13 +128,15 @@ uint8_t getPaletteIndex(RGB888 colour) {
 // - r: The red component
 // - g: The green component
 // - b: The blue component
+// Returns:
+// - Physical colour number or -1 for an Error
 //
 int8_t setLogicalPalette(uint8_t l, uint8_t p, uint8_t r, uint8_t g, uint8_t b) {
 	RGB888 col;				// The colour to set
 
 	if (p == 255) {					// If p = 255, then use the RGB values
 		col = RGB888(r, g, b);
-	} else if (p < 64) {			// If p < 64, then look the value up in the colour lookup table
+	} else if (p < 64) {			// If p < 64, use colour lookup table to convert physical to RGB888
 		col = colourLookup[p];
 	} else {
 		debug_log("vdu_palette: p=%d not supported\n\r", p);
@@ -142,15 +144,15 @@ int8_t setLogicalPalette(uint8_t l, uint8_t p, uint8_t r, uint8_t g, uint8_t b) 
 	}
 
 	debug_log("vdu_palette: %d,%d,%d,%d,%d\n\r", l, p, r, g, b);
-	uint8_t index = (col.R >> 6) << 4 | (col.G >> 6) << 2 | (col.B >> 6);
+	uint8_t physicalColor = (col.R >> 6) << 4 | (col.G >> 6) << 2 | (col.B >> 6);
 	// update palette entry
-	palette[l & (getVGAColourDepth() - 1)] = index;
+	palette[l & (getVGAColourDepth() - 1)] = physicalColor;
 	if (getVGAColourDepth() < 64) {		// If it is a paletted video mode
 		// change underlying output video palette
 		setPaletteItem(l, col);
 		updateRGB2PaletteLUT();
 	}
-	return index;
+	return physicalColor;
 }
 
 // Reset the palette and set the foreground and background drawing colours
@@ -488,7 +490,7 @@ void switchBuffer() {
 	}
 }
 
-void setMouseCursorPos(uint16_t x, uint16_t y) {
+inline void setMouseCursorPos(uint16_t x, uint16_t y) {
 	_VGAController->setMouseCursorPos(x, y);
 }
 

@@ -168,7 +168,7 @@ void VDUStreamProcessor::vdu_sys_sprites() {
 		}	break;
 
 		case 19: {	// Set sprite as hardware
-			if (isFeatureFlagSet(TESTFLAG_HW_SPRITES)) {
+			if (isVDPVariableSet(TESTFLAG_HW_SPRITES)) {
 				setSpriteHardware();
 				debug_log("vdu_sys_sprites: sprite %d is hardware\n\r", getCurrentSprite());
 			}
