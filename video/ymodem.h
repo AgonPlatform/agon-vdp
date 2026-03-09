@@ -759,7 +759,7 @@ void VDUStreamProcessor::vdu_sys_ymodem_receive(void) {
       case YMODEM_SOH:
       case YMODEM_STX:
         // Check for 'empty' block 0 block, might be early timed out
-        if(block.end_of_batch) {
+        if(!receiving_data && block.end_of_batch) {
           session_done = true;
           send_ack();
           break;
