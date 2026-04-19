@@ -18,6 +18,7 @@
 #include "updater.h"
 #include "vdu_stream_processor.h"
 #include "vdu_layers.h"
+#include "ymodem.h"
 
 extern void startTerminal();					// Start the terminal
 extern void setConsoleMode(bool mode);			// Set console mode
@@ -112,10 +113,22 @@ void VDUStreamProcessor::vdu_sys() {
 				clearEcho();				// Don't echo bitmap/sprite commands
 				vdu_sys_sprites();			// Sprite system control
 			}	break;
-			case 0x1C: {					// VDU 23, 28
-				clearEcho();				// Don't echo hexload commands
-				vdu_sys_hexload();
-			}	break;
+			case 0x1C: {
+				clearEcho();                        // Don't echo hexload/ymodem commands
+				int16_t hlcmd = readByte_t();
+				switch(hlcmd) {
+					case -1:
+						vdu_sys_hexload();          // VDU 23,28
+						break;
+					case 1:
+						vdu_sys_ymodem_receive();   // VDU 23,28,1
+						break;
+					case 2:
+						vdu_sys_ymodem_send();      // VDU 23,28,2
+						break;
+				}
+
+			}   break;
 		}
 	}
 	//

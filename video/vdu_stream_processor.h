@@ -121,7 +121,13 @@ class VDUStreamProcessor {
 		void createBitmapFromBuffer(uint16_t bufferId, uint8_t format, uint16_t width, uint16_t height);
 
 		void vdu_sys_hexload(void);
+		void vdu_sys_ymodem_receive(void);
+		void vdu_sys_ymodem_send(void);
 		void sendKeycodeByte(uint8_t b, bool waitack);
+		void sendKeycodeUINT32_T(uint32_t value);
+		void sendKeycodeBytestream(const char *ptr, uint32_t length);
+		uint32_t receiveKeycodeUINT32(void);
+		void receiveKeycodeBytestream(char *ptr, uint32_t length);
 
 		void vdu_sys_buffered();
 		uint32_t bufferWrite(uint16_t bufferId, uint32_t size);
@@ -248,6 +254,7 @@ class VDUStreamProcessor {
 		// End: Tile Engine
 
 	public:
+	    friend class MOS_YmodemSession;
 		uint16_t id = 65535;
 		uint8_t contextId = 0;					// Current active context ID
 
