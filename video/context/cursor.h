@@ -298,7 +298,7 @@ void Context::updateTextCursorBitmap() {
 
 	// Ensure our sprite exists, and if not create it
 	if (textCursorSprite == nullptr) {
-		textCursorSprite = make_shared_psram<Sprite>();
+		textCursorSprite = std::make_shared<Sprite>();
 		if (!textCursorSprite) {
 			debug_log("Failed to create text cursor sprite\n");
 			return;

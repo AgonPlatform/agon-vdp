@@ -396,7 +396,7 @@ Context::Context(const Context &c) {
 		}
 		if (textCursorBitmap && c.textCursorSprite) {
 			// Create a new sprite for the text cursor
-			textCursorSprite = make_shared_psram<Sprite>();
+			textCursorSprite = std::make_shared<Sprite>();
 			if (textCursorSprite) {
 				textCursorSprite->addBitmap(textCursorBitmap.get());
 				textCursorSprite->moveTo(c.textCursorSprite->x, c.textCursorSprite->y);

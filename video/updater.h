@@ -53,11 +53,18 @@ void VDUStreamProcessor::receiveFirmware() {
 //	const esp_partition_t *configured = esp_ota_get_boot_partition();
 //	const esp_partition_t *running = esp_ota_get_running_partition();
 
+	// Having any hardware sprites enabled during OTA can make the VDP crash
+	_VGAController->setMouseCursor(nullptr);
+	_VGAController->setTextCursor(nullptr);
+	activateSprites(0);
+
 	update_partition = esp_ota_get_next_update_partition(NULL);
 	err = esp_ota_begin(update_partition, OTA_SIZE_UNKNOWN, &update_handle);
 	if (err != ESP_OK) {
 		printFmt("esp_ota_begin failed, error=%d\n\r", err);
 		discardBytes(update_size + 1);
+		// Re-enable text cursor by resetting our text painting
+		context->resetTextPainting();
 		return;
 	}
 
@@ -78,6 +85,8 @@ void VDUStreamProcessor::receiveFirmware() {
 		bytes_remain = readIntoBuffer(buffer, bytes_to_read);
 		if(bytes_remain) {
 			printFmt("\n\rRead buffer failed at byte %u!\n\r", remaining_bytes);
+			// Re-enable text cursor by resetting our text painting
+			context->resetTextPainting();
 			return;
 		}
 
@@ -92,6 +101,8 @@ void VDUStreamProcessor::receiveFirmware() {
 		if (err != ESP_OK) {
 			printFmt("\n\resp_ota_write failed, error=%d\n'r", err);
 			discardBytes(remaining_bytes + 1);
+			// Re-enable text cursor by resetting our text painting
+			context->resetTextPainting();
 			return;
 		}
 	}
@@ -105,11 +116,15 @@ void VDUStreamProcessor::receiveFirmware() {
 	auto checksum_complement = readByte_t();
 	if (checksum_complement == -1) {
 		printFmt("Checksum not received!\n\r");
+		// Re-enable text cursor by resetting our text painting
+		context->resetTextPainting();
 		return;
 	}
 	printFmt("checksum_complement: 0x%02x\n\r", checksum_complement);
 	if(uint8_t(code + (uint8_t)checksum_complement)) {
 		printFmt("checksum error!\n\r");
+		// Re-enable text cursor by resetting our text painting
+		context->resetTextPainting();
 		return;
 	}
 	printFmt("checksum ok!\n\r");
@@ -117,6 +132,8 @@ void VDUStreamProcessor::receiveFirmware() {
 	err = esp_ota_set_boot_partition(update_partition);
 	if (err != ESP_OK) {
 		printFmt("esp_ota_set_boot_partition failed! err=0x%02x\n\r", err);
+		// Re-enable text cursor by resetting our text painting
+		context->resetTextPainting();
 		return;
 	}
 
