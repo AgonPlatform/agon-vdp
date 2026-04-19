@@ -158,24 +158,27 @@ void Context::plotPoint() {
 // Fill horizontal line
 //
 void Context::fillHorizontalLine(bool scanLeft, bool match, RGB888 matchColor) {
+	canvas->moveTo(p1.X, p1.Y);
+	canvas->fillRow(matchColor, scanLeft, match);
 	canvas->waitCompletion(false);
-	int16_t y = p1.Y;
-	int16_t x1 = scanLeft ? (match ? scanHToMatch(p1.X, y, matchColor, -1) : scanH(p1.X, y, matchColor, -1)) : p1.X;
-	int16_t x2 = match ? scanHToMatch(p1.X, y, matchColor, 1) : scanH(p1.X, y, matchColor, 1);
-	debug_log("fillHorizontalLine: (%d, %d) transformed to (%d,%d) -> (%d,%d)\n\r", p1.X, p1.Y, x1, y, x2, y);
 
-	if (x1 == x2 || x1 > x2) {
-		// Coordinate needs to be tweaked to match Acorn's behaviour
-		auto p = toCurrentCoordinates(scanLeft ? x2 + 1 : x2, y);
-		pushPoint(p.X, up1.Y);
-		// nothing to draw
-		return;
-	}
-	canvas->moveTo(x1, y);
-	canvas->lineTo(x2, y);
+	// read back the updated position from the canvas and sync our coordinate stack
+	auto pos = canvas->getPosition();
+	auto p = toCurrentCoordinates(pos.X, pos.Y);
+	pushPoint(p.X, p.Y);
+}
 
-	auto p = toCurrentCoordinates(x2, y);
-	pushPoint(p.X, up1.Y);
+// Flood fill
+//
+void Context::floodFill(bool match, RGB888 matchColor) {
+	canvas->moveTo(p1.X, p1.Y);
+	canvas->floodFill(matchColor, match);
+	canvas->waitCompletion(false);
+
+	// read back the updated position from the canvas and sync our coordinate stack
+	auto pos = canvas->getPosition();
+	auto p = toCurrentCoordinates(pos.X, pos.Y);
+	pushPoint(p.X, p.Y);
 }
 
 // Triangle plot
@@ -221,6 +224,23 @@ void Context::plotCircle(bool filled) {
 		canvas->fillEllipse(p2.X, p2.Y, size, rectangularPixels ? size / 2 : size);
 	} else {
 		canvas->drawEllipse(p2.X, p2.Y, size, rectangularPixels ? size / 2 : size);
+	}
+}
+
+// Ellipse plot (Acorn-style, three-point sheared ellipse)
+//
+// p3 = centre, p2 = horizontal axis endpoint (only X matters),
+// p1 = top point (Y-offset = vertical semi-axis, X-offset = horizontal shear).
+// All coordinates here are already in pixel/screen space (agon-vdp's pushPoint
+// has applied any OS->pixel conversion), so we pass them straight through.
+void Context::plotEllipse(bool filled) {
+	int width  = 2 * abs(p2.X - p3.X);
+	int height = 2 * abs(p1.Y - p3.Y);
+	int shear  = p1.X - p3.X;
+	if (filled) {
+		canvas->fillEllipseSheared(p3.X, p3.Y, width, height, shear);
+	} else {
+		canvas->drawEllipseSheared(p3.X, p3.Y, width, height, shear);
 	}
 }
 
@@ -704,8 +724,10 @@ bool IRAM_ATTR Context::plot(int16_t x, int16_t y, uint8_t command) {
 				fillHorizontalLine(false, false, gfg);
 				break;
 			case 0x80:	// flood to non-bg
+				floodFill(false, gbg);
+				break;
 			case 0x88:	// flood to fg
-				debug_log("plot flood fill not implemented\n\r");
+				floodFill(true, gfg);
 				break;
 			case 0x90:	// circle outline
 				plotCircle(false);
@@ -729,9 +751,11 @@ bool IRAM_ATTR Context::plot(int16_t x, int16_t y, uint8_t command) {
 				plotCopyMove(mode);
 				break;
 			case 0xC0:	// ellipse outline
+				plotEllipse(false);
+				break;
 			case 0xC8:	// ellipse fill
-				// fab-gl's ellipse isn't compatible with BBC BASIC
-				debug_log("plot ellipse not implemented\n\r");
+				setGraphicsFill(mode);
+				plotEllipse(true);
 				break;
 			case 0xD8:	// plot path (unassigned on Acorn and other BBC BASIC versions)
 				plotPath(mode, lastPlotCommand & 0x03);

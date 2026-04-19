@@ -199,10 +199,12 @@ class Context {
 		void plotLine(bool omitFirstPoint, bool omitLastPoint, bool usePattern, bool resetPattern);
 		void plotPoint();
 		void fillHorizontalLine(bool scanLeft, bool match, RGB888 matchColor);
+		void floodFill(bool match, RGB888 matchColor);
 		void plotTriangle();
 		void plotRectangle();
 		void plotParallelogram();
 		void plotCircle(bool filled);
+		void plotEllipse(bool filled);
 		void plotArc();
 		void plotSegment();
 		void plotSector();
