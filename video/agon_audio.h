@@ -186,7 +186,7 @@ uint8_t setSampleRate(uint8_t channel, uint16_t sampleRate) {
 	if (channel == 255) {
 		// set underlying sample rate
 		setSampleRate(sampleRate);
-		return 0;
+		return 1;
 	}
 	if (channelEnabled(channel)) {
 		return audioChannels[channel]->setSampleRate(sampleRate);
