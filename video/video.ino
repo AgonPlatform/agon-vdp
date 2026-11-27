@@ -102,7 +102,11 @@ void setup() {
 		disableCore1WDT(); delay(200);
 	#endif
 	DBGSerial.begin(SERIALBAUDRATE, SERIAL_8N1, 3, 1);
-	changeMode(startup_screen_mode);
+	if (changeMode(startup_screen_mode) != 0) {
+		releaseVGAController();
+		DBGSerial.println("Unable to start the VDP display");
+		return;
+	}
 	copy_font();
 	setupVDPProtocol();
 	processor = new VDUStreamProcessor(&VDPSerial);
