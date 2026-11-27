@@ -2,6 +2,7 @@
 #define AGON_SCREEN_H
 
 #include <memory>
+#include <new>
 #include <fabgl.h>
 
 #include "agon.h"								// Agon definitions
@@ -37,11 +38,11 @@ void setLegacyModes(bool legacy) {
 //
 std::unique_ptr<fabgl::VGABaseController> getVGAController(uint8_t colours) {
 	switch (colours) {
-		case  2: return std::move(std::unique_ptr<fabgl::VGA2Controller>(new fabgl::VGA2Controller()));
-		case  4: return std::move(std::unique_ptr<fabgl::VGA4Controller>(new fabgl::VGA4Controller()));
-		case  8: return std::move(std::unique_ptr<fabgl::VGA8Controller>(new fabgl::VGA8Controller()));
-		case 16: return std::move(std::unique_ptr<fabgl::VGA16Controller>(new fabgl::VGA16Controller()));
-		case 64: return std::move(std::unique_ptr<fabgl::VGA64Controller>(new fabgl::VGA64Controller()));
+		case  2: return std::move(std::unique_ptr<fabgl::VGA2Controller>(new (std::nothrow) fabgl::VGA2Controller()));
+		case  4: return std::move(std::unique_ptr<fabgl::VGA4Controller>(new (std::nothrow) fabgl::VGA4Controller()));
+		case  8: return std::move(std::unique_ptr<fabgl::VGA8Controller>(new (std::nothrow) fabgl::VGA8Controller()));
+		case 16: return std::move(std::unique_ptr<fabgl::VGA16Controller>(new (std::nothrow) fabgl::VGA16Controller()));
+		case 64: return std::move(std::unique_ptr<fabgl::VGA64Controller>(new (std::nothrow) fabgl::VGA64Controller()));
 	}
 	return nullptr;
 }
@@ -181,26 +182,31 @@ void restorePalette() {
 	}
 }
 
-// Update our VGA controller based on number of colours
-// returns true on success, false if the number of colours was invalid
+// Drain pending drawing before calling this on a live screen.
+void releaseVGAController() {
+	canvas.reset();
+	if (_VGAController) {
+		_VGAController->end();
+		_VGAController.reset();
+	}
+	_VGAColourDepth = uint8_t(-1);
+}
+
 bool updateVGAController(uint8_t colours) {
-	if (colours == _VGAColourDepth) {
+	if (_VGAController && colours == _VGAColourDepth) {
 		return true;
 	}
 
-	auto controller = getVGAController(colours);	// Get a new controller
-	if (!controller) {
+	// The old viewport competes with the new controller for internal RAM.
+	releaseVGAController();
+	auto controller = getVGAController(colours);
+	if (!controller || !controller->drawingResourcesReady()) {
 		return false;
 	}
 
+	_VGAController = std::move(controller);
 	_VGAColourDepth = colours;
-	if (_VGAController) {						// If there is an existing controller running then
-		_VGAController->end();					// end it
-		_VGAController.reset();					// Delete it
-	}
-	_VGAController = std::move(controller);		// Switch to the new controller
-	_VGAController->begin();					// And spin it up
-
+	_VGAController->begin();
 	return true;
 }
 
@@ -214,8 +220,8 @@ bool updateVGAController(uint8_t colours) {
 // - 2: Not enough memory for mode
 //
 int8_t changeResolution(uint8_t colours, const char * modeLine, bool doubleBuffered = false) {
-	if (!updateVGAController(colours)) {			// If we can't update the controller then
-		return 1;									// Return the error
+	if (!updateVGAController(colours)) {
+		return 2;
 	}
 
 	canvas.reset();									// Delete the canvas
@@ -226,10 +232,21 @@ int8_t changeResolution(uint8_t colours, const char * modeLine, bool doubleBuffe
 		debug_log("changeResolution: modeLine is null\n\r");
 	}
 
+	if (_VGAController->getViewPortHeight() <= 0 ||
+	    _VGAController->getViewPortWidth() <= 0 ||
+	    _VGAController->getScreenHeight() != _VGAController->getViewPortHeight()) {
+		releaseVGAController();
+		return 2;
+	}
+
 	_VGAController->enableBackgroundPrimitiveExecution(true);
 	_VGAController->enableBackgroundPrimitiveTimeout(false);
 
-	canvas.reset(new fabgl::Canvas(_VGAController.get()));		// Create the new canvas
+	canvas.reset(new (std::nothrow) fabgl::Canvas(_VGAController.get()));
+	if (!canvas) {
+		releaseVGAController();
+		return 2;
+	}
 	debug_log("after change of canvas...\n\r");
 	debug_log("  free internal: %d\n\r  free 8bit: %d\n\r  free 32bit: %d\n\r",
 		heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
@@ -243,13 +260,6 @@ int8_t changeResolution(uint8_t colours, const char * modeLine, bool doubleBuffe
 	logicalScaleY = LOGICAL_SCRH / (double)canvasH;
 	rectangularPixels = ((float)canvasW / (float)canvasH) > 2;
 
-	//
-	// Check whether the selected mode has enough memory for the vertical resolution
-	//
-	if (_VGAController->getScreenHeight() != _VGAController->getViewPortHeight()) {
-		return 2;
-	}
-	// Return with no errors
 	return 0;
 }
 
@@ -311,6 +321,7 @@ int8_t changeMode(uint8_t mode) {
 					ttxtMode = true;
 				} else {
 					debug_log("changeMode: ttxt_instance.init() failed %d\n\r", errVal);
+					errVal = 2;
 				}
 			}
 			break;
@@ -460,7 +471,7 @@ int8_t changeMode(uint8_t mode) {
 	if (errVal == 0) {
 		videoMode = mode;
 	}
-	if (errVal != -1) {
+	if (errVal != -1 && canvas) {
 		restorePalette();
 	}
 	return errVal;

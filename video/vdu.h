@@ -304,14 +304,23 @@ void VDUStreamProcessor::vdu_mode(uint8_t mode) {
 	waitPlotCompletion(true);
 	ttxtMode = false;
 	bufferRemoveCallback(65535, CALLBACK_VSYNC);
+	const uint8_t previousMode = videoMode;
+	const bool leavingDoubleBuffer = isDoubleBuffered() && mode < 128;
 	auto errVal = changeMode(mode);
 	if (errVal != 0) {
 		debug_log("vdu_mode: Error %d changing to mode %d\n\r", errVal, mode);
-		errVal = changeMode(videoMode);
+		// A restored double-buffered display can hide MOS output.
+		const uint8_t recoveryMode = leavingDoubleBuffer && errVal == 2 ? 1 : previousMode;
+		if (recoveryMode != mode || errVal != 2) {
+			errVal = changeMode(recoveryMode);
+		}
+		if (errVal != 0 && recoveryMode != 1 && mode != 1) {
+			errVal = changeMode(1);
+		}
 		if (errVal != 0) {
-			debug_log("vdu_mode: Error %d changing back to mode %d\n\r", errVal, videoMode);
-			videoMode = 1;
-			changeMode(1);
+			releaseVGAController();
+			esp_restart();
+			return;
 		}
 	}
 	// reset our context, and clear the context stack
